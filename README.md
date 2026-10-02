@@ -1,25 +1,44 @@
-# AURA Desktop Assistant
+# A.U.R.A.
 
-AURA is a local-first Windows assistant starter project. Its action layer is deterministic and allowlisted: Ollama can select a registered action and supply typed arguments, while Python code validates and executes it. The model never receives a shell or arbitrary-code execution tool.
+**Adaptive User Responsive Assistant** is a student multidisciplinary project exploring a local, privacy-focused assistant for Windows. The long-term goal is an assistant that can understand voice requests, perform controlled desktop actions, and use user-presence and environmental context to respond appropriately.
+
+The laptop is A.U.R.A.'s primary device: its microphone and speakers provide voice input and output, its webcam can support future visual context features, and its CPU or GPU can run local AI. External hardware such as an ESP32 and load sensors in a chair is intended to extend the system's awareness of user presence.
+
+## Project status
+
+This repository currently contains the **Python command-line prototype and deterministic action layer**. It is not yet the finished desktop assistant: the graphical interface, system-tray lifecycle, packaged installer, integrated speech setup, webcam processing, and ESP32/load-sensor integration remain future work.
+
+The current prototype uses Ollama with Qwen for natural-language intent routing. The model selects from registered capabilities and supplies structured arguments; Python validates those arguments and calls predefined handlers. The model is not given unrestricted shell or code execution.
+
+## Current capabilities
+
+- Registry-based actions with argument validation and confirmation for sensitive operations.
+- Application discovery and launch through an allowlisted application catalog.
+- SQLite-backed reminders and scheduled application launches.
+- In-memory timers and Pomodoro sessions.
+- Local Ollama intent routing, capability listing and explanations, workflows, and optional speech adapters.
+- Desktop notifications where supported by the installed environment.
+
+Current limitations are documented below and in the relevant implementation. In particular, the console interface is the only complete user interface today. Optional voice support requires separate dependencies and a locally supplied Vosk model. Presence, webcam context, and ESP32 sensor support are not implemented yet.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-  M[Microphone / typed input] --> S[Input adapter]
-  S --> R[Ollama intent router]
-  R --> V[Strict JSON and schema validator]
-  V --> C{Confirmation / ambiguity}
-  C -->|approved| D[Action registry]
-  C -->|clarify / reject| F[Safe response]
-  D --> H[Registered handlers]
-  H --> OS[Windows APIs / applications / SQLite]
-  OS --> T[TTS and desktop notification adapters]
+  I[Typed input or optional microphone adapter] --> N[Ollama and Qwen intent routing]
+  N --> V[Intent and argument validation]
+  V --> R[Capability registry]
+  R --> A[Deterministic action handlers]
+  A --> O[Windows applications, local database, and OS adapters]
+  O --> S[Text response, optional TTS, and notifications]
+  C[Future context adapters: webcam and ESP32 sensors] -. planned .-> R
 ```
 
-## Quick start
+## Run the prototype
 
-Requires Python 3.11+. From this folder:
+Requirements: Windows, Python 3.11 or later, and Ollama with a local Qwen model available.
+
+From the repository folder:
 
 ```powershell
 py -m venv .venv
@@ -29,49 +48,42 @@ Copy-Item .env.example .env
 py -m aura
 ```
 
-Ollama must be installed and running locally. For faster intent routing on a laptop iGPU, pull `qwen3:4b` with `ollama pull qwen3:4b` and set `AURA_OLLAMA_MODEL=qwen3:4b` in `.env`. AURA disables Qwen3 thinking for the routing task, caps generated JSON, and keeps the model loaded for 15 minutes by default; adjust `AURA_OLLAMA_KEEP_ALIVE`, `AURA_OLLAMA_NUM_CTX`, and `AURA_OLLAMA_NUM_PREDICT` if needed. `AURA_DEBUG=1` prints Ollama load, prompt-evaluation, and generation timings to show where latency is occurring.
+Start Ollama through its normal Windows application or service before launching A.U.R.A. The example configuration uses `qwen3:4b`; change `AURA_OLLAMA_MODEL` in `.env` if you have a different model installed. The default console interface does not require the optional voice dependencies.
 
-The default console interface works without voice extras. Voice input is optional; installing the `voice` extra may require Microsoft C++ Build Tools to compile PyAudio on some Python versions. To enable microphone input, install a Vosk model locally and set `AURA_VOSK_MODEL_PATH`; AURA does not send microphone audio to a cloud recognition service.
+To enable the optional microphone interface, install the `voice` extra and a Vosk model locally, then set `AURA_VOSK_MODEL_PATH` in `.env`. Microphone audio is processed locally by that adapter.
 
-Use `py -m aura --list-actions` to inspect registered capabilities. `AURA_DEBUG=1` enables diagnostic logging. The SQLite database defaults to `%LOCALAPPDATA%\AURA\aura.sqlite3`.
+Use `py -m aura --list-actions` to list the registered capabilities. Set `AURA_DEBUG=1` in `.env` to enable diagnostic logging. By default, the SQLite database is stored under `%LOCALAPPDATA%\AURA\aura.sqlite3`.
 
-## Built-in spoken commands
+## Example requests
 
-- `Remind me tomorrow at 9 AM to attend class.` Reminders persist in SQLite and can recur daily or weekly.
-- `List reminders`, `delete reminder 2`, `edit reminder 2`, and `snooze reminder 2 for 10 minutes` manage reminders.
-- `Start a Pomodoro.` Defaults to 25-minute focus periods, 5-minute breaks, and 4 cycles. You can specify alternate values or say `cancel Pomodoro`.
-- `Open Chrome in 10 seconds` schedules a relative delay measured from when AURA received the request; if model inference takes longer than the delay, AURA opens it as soon as routing finishes. `Open Chrome at 6 PM` schedules a clock time. `Open VS Code every weekday at 9 AM` or `Open Teams every Monday at 10 AM` creates recurring launches. Say `list app schedules` or `cancel app schedule 1` to manage them. Failed launches remain visible in the schedule list.
-- `List available functions` (also `what can you do`) prints registered function IDs and descriptions without making an Ollama request. Ask `Explain the schedule_open_app function` for its arguments and an example.
-- `Toggle Spotify`, `pause Spotify`, and `resume Spotify` send the Windows play/pause media key. Windows may direct that key to another active media app.
-- Greetings such as `hello`, `good morning`, and `hey AURA` receive an immediate local response without model inference.
+- “Open Chrome.”
+- “Open Chrome in 10 seconds.”
+- “Open VS Code at 6 PM.”
+- “Remind me tomorrow at 9 AM to attend class.”
+- “Start a Pomodoro.”
+- “List available functions.”
+- “Explain the schedule_open_app function.”
+- “Toggle Spotify.”
 
-## Extending AURA
+The app catalog and natural-language routing are not a guarantee that every installed app or phrasing will be recognized. Spotify controls use the Windows media key and may be handled by another active media player.
 
-### Add an action
+## Scheduling and persistence
 
-Implement a handler in `aura/actions/handlers.py`, then register metadata with `ActionSpec` in `aura/actions/builtin.py`. Include an argument schema, validation, confirmation setting, concise spoken responses, and examples. Router capabilities are generated at runtime from the registry.
+Reminders and application schedules are stored in SQLite. Their background workers run only while A.U.R.A. is running. Scheduled app launches also require the computer to be awake at the scheduled time; overdue schedules are checked when A.U.R.A. starts again. Timers and Pomodoro sessions are in memory and are lost when the process exits.
 
-### Add an application
+A future desktop release is intended to provide a system-tray mode, optional Windows startup, first-run setup, and a status/settings window. Durable background operation and behavior across sleep, shutdown, or app exit will be addressed as that lifecycle is designed.
 
-Add an `AppSpec` data entry in `aura/apps/catalog.py` with canonical ID, display name, aliases, and known launch candidates. The generic resolver also searches PATH and Windows Start Menu shortcuts. No application-specific launch function is needed.
+## Safety model
 
-### Add a workflow
+- The model can choose only registered capabilities and provide structured arguments.
+- The router and registry validate model output before an action runs.
+- Action handlers do not accept model-generated shell commands or arbitrary executable paths.
+- Sensitive system actions require explicit confirmation.
+- File access is restricted to known user folders or explicitly registered roots; no delete action is provided.
+- Reminders and schedules are managed through the local SQLite database.
 
-Add a workflow definition to `aura/workflows/catalog.py`. Steps refer only to existing action IDs and fixed argument objects. User/model text is never evaluated as workflow code.
+## Development
 
-## Safety and behavior
+Install the test dependencies with `py -m pip install -e ".[test]"`, then run `py -m pytest`. Tests use temporary databases and mock operating-system effects; they do not launch installed applications or shut down the computer.
 
-- Model replies are parsed as one JSON object and validated against the registry-derived action/argument schemas.
-- Unknown actions, missing or extra arguments, invalid values, low confidence, and malformed JSON are rejected before handlers run.
-- Action handlers never accept model-supplied executable paths or shell commands.
-- Shutdown and restart require an explicit follow-up confirmation. Pending confirmation is consumed as confirmation text.
-- File opening is restricted to known user folders or explicitly registered roots; no delete action is provided.
-- Reminders persist in SQLite and are checked by a background worker. Recurrence supports daily, weekly, and interval rules.
-- Timers are in memory and therefore reset when AURA exits.
-- Scheduled app launches are saved in SQLite, but AURA must be running and the computer awake at the scheduled time to launch them. AURA checks overdue schedules when it starts again.
-- The initial app catalog is broad; entries are optional and missing apps produce a friendly response.
-- On this clean-slate starter, OS features are implemented as registered Windows handlers where practical. Voice, presence sensing, and context awareness are optional adapters, not required for safe action execution.
-
-## Testing
-
-Run `py -m pytest`. Tests use temporary databases and mock operating-system effects; they do not launch installed apps or shut down the computer.
+Actions are defined in `aura/actions/builtin.py` and implemented in `aura/actions/handlers.py`. Application entries are maintained in `aura/apps/catalog.py`. Workflows refer to registered actions and fixed arguments; user or model text is not evaluated as workflow code.
