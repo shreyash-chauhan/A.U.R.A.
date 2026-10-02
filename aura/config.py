@@ -36,3 +36,8 @@ class Settings:
             return Path(configured).expanduser()
         base = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData/Local"))
         return base / "AURA" / "aura.sqlite3"
+
+    @property
+    def vosk_model_path(self) -> Path | None:
+        configured = os.getenv("AURA_VOSK_MODEL_PATH", "").strip()
+        return Path(configured).expanduser() if configured else None

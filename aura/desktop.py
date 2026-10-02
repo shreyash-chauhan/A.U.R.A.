@@ -9,6 +9,8 @@ import urllib.request
 from aura.apps.catalog import ALIASES
 from aura.app import build
 from aura.core import AssistantCore
+from aura.adapters.camera import WebcamPresence
+from aura.adapters.speech import OfflineMicrophone, WindowsSpeechOutput
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +79,9 @@ def run_desktop(settings):
 
     class WindowSignals(QObject):
         reminder = Signal(str)
+        voice_text = Signal(str)
+        microphone_status = Signal(str)
+        camera_status = Signal(str)
 
     class MainWindow(QMainWindow):
         def __init__(self):
@@ -90,7 +95,12 @@ def run_desktop(settings):
             self.task_signals.failed.connect(lambda callback, message: callback(message))
             self.signals = WindowSignals()
             self.signals.reminder.connect(self._add_event)
+            self.signals.voice_text.connect(lambda text: self._submit_text(text, voice=True))
+            self.signals.microphone_status.connect(self._microphone_status)
+            self.signals.camera_status.connect(self._camera_status)
             self._request_active = False
+            self._pending_voice = []
+            self._camera_enabled = False
             self._ollama_check_active = False
             self._shutting_down = False
             self._build_ui()
@@ -118,12 +128,12 @@ def run_desktop(settings):
             status_layout = QFormLayout()
             for name, initial in (
                 ("Assistant", "Starting"),
-                ("Microphone / speech input", "Not integrated in desktop interface"),
-                ("Speech output", "Not integrated in desktop interface"),
+                ("Microphone", "Off — enable when ready"),
+                ("Speech output", "Windows speech, ready when needed"),
                 ("Ollama service", "Checking local service…"),
                 ("Qwen model", "Waiting for Ollama status"),
-                ("Camera", "Not integrated"),
-                ("User presence", "Not available — sensor integration is planned"),
+                ("Webcam", "Off — enable when ready"),
+                ("Visual context", "Unknown — webcam is off"),
                 ("ESP32 chair sensors", "Not connected"),
             ):
                 value = QLabel(initial)
@@ -131,6 +141,18 @@ def run_desktop(settings):
                 self.status_labels[name] = value
                 status_layout.addRow(name, value)
             layout.addLayout(status_layout)
+
+            privacy_row = QHBoxLayout()
+            self.mic_button = QPushButton("Enable microphone")
+            self.mic_button.setCheckable(True)
+            self.mic_button.toggled.connect(self._toggle_microphone)
+            self.camera_button = QPushButton("Enable webcam")
+            self.camera_button.setCheckable(True)
+            self.camera_button.toggled.connect(self._toggle_camera)
+            privacy_row.addWidget(self.mic_button)
+            privacy_row.addWidget(self.camera_button)
+            privacy_row.addStretch(1)
+            layout.addLayout(privacy_row)
 
             event_title = QLabel("Recent activity")
             event_title.setStyleSheet("font-size: 16px; font-weight: 600; margin-top: 12px;")
@@ -172,11 +194,13 @@ def run_desktop(settings):
             open_action = QAction("Open A.U.R.A.", self)
             open_action.triggered.connect(self._show_window)
             menu.addAction(open_action)
-            self.listening_action = QAction("Enable listening (voice setup required)", self)
-            self.listening_action.setEnabled(False)
+            self.listening_action = QAction("Enable microphone", self)
+            self.listening_action.setCheckable(True)
+            self.listening_action.toggled.connect(self._set_microphone_enabled)
             menu.addAction(self.listening_action)
-            self.presence_action = QAction("Enable presence detection (sensor setup required)", self)
-            self.presence_action.setEnabled(False)
+            self.presence_action = QAction("Enable webcam context", self)
+            self.presence_action.setCheckable(True)
+            self.presence_action.toggled.connect(self._set_camera_enabled)
             menu.addAction(self.presence_action)
             status_action = QAction("Status", self)
             status_action.triggered.connect(self._show_status)
@@ -193,11 +217,14 @@ def run_desktop(settings):
             self.tray.show()
 
         def _init_runtime(self):
+            self.speaker = WindowsSpeechOutput()
+            self.microphone = OfflineMicrophone(settings.vosk_model_path)
+            self.webcam = WebcamPresence()
             (self.registry, self.router, _speaker, self.reminders, self.schedules,
              self.timers, self.pomodoros) = build(
-                settings, speaker=_SilentSpeaker(), notify_user=self.signals.reminder.emit
+                settings, speaker=self.speaker, notify_user=self.signals.reminder.emit
             )
-            self.core = AssistantCore(self.registry, self.router, ALIASES)
+            self.core = AssistantCore(self.registry, self.router, ALIASES, self._context_snapshot)
             self.reminders.start()
             self.schedules.start()
             self.status_labels["Assistant"].setText("Running in tray")
@@ -210,12 +237,17 @@ def run_desktop(settings):
                 self.events.takeItem(self.events.count() - 1)
 
         def _submit(self):
-            if self._request_active:
-                return
             text = self.command.text().strip()
             if not text:
                 return
             self.command.clear()
+            self._submit_text(text)
+
+        def _submit_text(self, text, voice=False):
+            if self._request_active:
+                if voice:
+                    self._pending_voice.append(text)
+                return
             self._add_event(f"You: {text}")
             self._request_active = True
             self.send_button.setEnabled(False)
@@ -231,6 +263,7 @@ def run_desktop(settings):
                 for function in reply.functions:
                     self._add_event(f"  • {function}")
             self._add_event(f"A.U.R.A.: {reply.message}")
+            self.speaker.speak(reply.message)
             self._finish_request()
 
         def _handle_task_error(self, message):
@@ -244,10 +277,81 @@ def run_desktop(settings):
             self.command.setEnabled(True)
             self.command.setFocus()
             self.status_labels["Assistant"].setText("Running in tray")
+            if self._pending_voice:
+                text = self._pending_voice.pop(0)
+                self._submit_text(text, voice=True)
+
+        def _toggle_microphone(self, enabled):
+            self.listening_action.blockSignals(True)
+            self.listening_action.setChecked(enabled)
+            self.listening_action.blockSignals(False)
+            self._set_microphone_enabled(enabled)
+
+        def _set_microphone_enabled(self, enabled):
+            self.mic_button.blockSignals(True)
+            self.mic_button.setChecked(enabled)
+            self.mic_button.setText("Disable microphone" if enabled else "Enable microphone")
+            self.mic_button.blockSignals(False)
+            if enabled:
+                self.status_labels["Microphone"].setText("Starting offline speech recognition…")
+                self.microphone.start(self.signals.voice_text.emit, self.signals.microphone_status.emit)
+            else:
+                self.microphone.stop()
+                self.status_labels["Microphone"].setText("Off — microphone is not active")
+
+        def _microphone_status(self, status):
+            self.status_labels["Microphone"].setText(status)
+            if status.startswith("Unavailable"):
+                self.mic_button.setChecked(False)
+                self.listening_action.setChecked(False)
+                self._add_event(f"Microphone: {status}")
+
+        def _toggle_camera(self, enabled):
+            self.presence_action.blockSignals(True)
+            self.presence_action.setChecked(enabled)
+            self.presence_action.blockSignals(False)
+            self._set_camera_enabled(enabled)
+
+        def _set_camera_enabled(self, enabled):
+            self._camera_enabled = bool(enabled)
+            self.camera_button.blockSignals(True)
+            self.camera_button.setChecked(enabled)
+            self.camera_button.setText("Disable webcam" if enabled else "Enable webcam")
+            self.camera_button.blockSignals(False)
+            if enabled:
+                self.status_labels["Webcam"].setText("Starting local webcam processing…")
+                self.status_labels["Visual context"].setText("Checking for a face in frame")
+                self.webcam.start(self.signals.camera_status.emit)
+            else:
+                self.webcam.stop()
+                self.status_labels["Webcam"].setText("Off — webcam is not active")
+                self.status_labels["Visual context"].setText("Unknown — webcam is off")
+
+        def _context_snapshot(self):
+            if not self._camera_enabled:
+                return None
+            state = self.webcam.status
+            if state == "Face in frame":
+                return {"webcam_face_in_frame": True}
+            if state == "No face detected":
+                return {"webcam_face_in_frame": False}
+            return None
+
+        def _camera_status(self, status):
+            self.status_labels["Webcam"].setText("On" if status in {"Face in frame", "No face detected"} else status)
+            if status in {"Face in frame", "No face detected"}:
+                self.status_labels["Visual context"].setText(status)
+            elif status.startswith("Unavailable"):
+                self.camera_button.setChecked(False)
+                self.presence_action.setChecked(False)
+                self.status_labels["Visual context"].setText("Unknown — webcam unavailable")
+            elif status == "Off":
+                self.status_labels["Visual context"].setText("Unknown — webcam is off")
 
         def _refresh_ollama(self):
             if self._ollama_check_active or self._shutting_down:
                 return
+            self.status_labels["Speech output"].setText(self.speaker.status)
             self._ollama_check_active = True
             self.status_labels["Ollama service"].setText("Checking local service…")
             self.status_labels["Qwen model"].setText("Waiting for Ollama status")
@@ -277,8 +381,9 @@ def run_desktop(settings):
             fields.addRow("Model", QLabel(settings.ollama_model))
             fields.addRow("Ollama address", QLabel(settings.ollama_url))
             fields.addRow("Local data", QLabel(str(settings.db_path)))
-            fields.addRow("Voice input", QLabel("Not integrated in the desktop interface"))
-            fields.addRow("Presence sensing", QLabel("Not integrated"))
+            fields.addRow("Voice input", QLabel("Offline Vosk recognition; microphone starts only when enabled"))
+            fields.addRow("Speech output", QLabel("Windows built-in SAPI voices; processed locally"))
+            fields.addRow("Webcam context", QLabel("On-device face-in-frame check; no frames are saved"))
             fields.addRow("ESP32 chair sensors", QLabel("Not connected"))
             layout.addLayout(fields)
             note = QLabel("Configuration editing and first-run setup will be added in a later milestone.")
@@ -315,6 +420,9 @@ def run_desktop(settings):
                 self.timers.stop()
             if self.pomodoros:
                 self.pomodoros.cancel()
+            self.microphone.stop()
+            self.webcam.stop()
+            self.speaker.stop()
             QApplication.quit()
 
         def closeEvent(self, event):
@@ -329,10 +437,6 @@ def run_desktop(settings):
                     self, "System tray unavailable",
                     "A.U.R.A. is keeping this window open because Windows did not report an available system tray. Use Exit A.U.R.A. from the tray menu when it becomes available.",
                 )
-
-    class _SilentSpeaker:
-        def speak(self, _text):
-            return None
 
     app = QApplication.instance() or QApplication([])
     app.setApplicationName("A.U.R.A.")

@@ -67,8 +67,10 @@ def local_app_request(text: str, aliases: dict[str, str]) -> tuple[str, dict] | 
 class AssistantCore:
     """Coordinates intent routing, confirmation, and registered action execution."""
 
-    def __init__(self, registry: ActionRegistry, router: IntentRouter, aliases: dict[str, str]):
+    def __init__(self, registry: ActionRegistry, router: IntentRouter, aliases: dict[str, str],
+                 context_provider=None):
         self.registry, self.router, self.aliases = registry, router, aliases
+        self.context_provider = context_provider
         self._pending_confirmation: tuple[str, dict] | None = None
 
     def handle(self, text: str) -> AssistantReply:
@@ -97,7 +99,8 @@ class AssistantCore:
 
         try:
             route_started = time.perf_counter()
-            decision = self.router.route(text)
+            context = self.context_provider() if self.context_provider else None
+            decision = self.router.route(text, context=context) if context else self.router.route(text)
             log.debug("Intent route completed in %.2fs", time.perf_counter() - route_started)
         except Exception:
             if log.isEnabledFor(logging.DEBUG):

@@ -1,14 +1,16 @@
 # A.U.R.A.
 
-**Adaptive User Responsive Assistant** is a student multidisciplinary project exploring a local, privacy-focused assistant for Windows. The long-term goal is an assistant that can understand voice requests, perform controlled desktop actions, and use user-presence and environmental context to respond appropriately.
+**Adaptive User Responsive Assistant (A.U.R.A.)** is a multidisciplinary project to build a local-first Windows assistant that can hear spoken requests, carry out a controlled set of actions, and adapt to the user's context. The laptop provides its microphone, speakers, webcam, and local compute. A later hardware phase will connect an ESP32 to load sensors in a chair to estimate whether the user is seated.
 
-The laptop is A.U.R.A.'s primary device: its microphone and speakers provide voice input and output, its webcam can support future visual context features, and its CPU or GPU can run local AI. External hardware such as an ESP32 and load sensors in a chair is intended to extend the system's awareness of user presence.
+The language model interprets requests and selects from registered functions. It does not receive unrestricted access to the operating system. Deterministic Python handlers validate arguments and perform the actual actions. Voice and webcam sensing are explicitly opt-in: both start off and remain off until enabled in A.U.R.A.'s window or tray menu.
 
 ## Project status
 
-This repository currently contains the **Python prototype, deterministic action layer, and an early Windows desktop/system-tray interface**. It is not yet the finished desktop assistant: packaged installation, integrated speech setup, webcam processing, and ESP32/load-sensor integration remain future work.
+The repository contains a Python action layer and an early Windows desktop/system-tray application. The desktop build includes offline microphone recognition, Windows speech output, and on-device webcam face-in-frame detection. ESP32/load-sensor integration and a packaged installer remain future work. The desktop interface is an active prototype rather than a finished consumer installer.
 
-The current prototype uses Ollama with Qwen for natural-language intent routing. The model selects from registered capabilities and supplies structured arguments; Python validates those arguments and calls predefined handlers. The model is not given unrestricted shell or code execution.
+Speech recognition uses Vosk's small offline English model; on the first microphone enable, A.U.R.A. downloads the model into its local application-data folder. Audio is processed on the laptop. Text-to-speech uses Windows SAPI through `pyttsx3`. Webcam processing checks frames locally for a face; frames are not saved or sent to a service. When webcam sensing is enabled, the limited face-in-frame signal may accompany a request as context. A face in frame is only a visual signal, not identity or proof that the user is seated.
+
+Natural-language intent routing uses Ollama with a local Qwen model. The model emits a structured intent and arguments, which are validated before a registered Python handler runs. It cannot return executable commands.
 
 ## Current capabilities
 
@@ -16,23 +18,27 @@ The current prototype uses Ollama with Qwen for natural-language intent routing.
 - Application discovery and launch through an allowlisted application catalog.
 - SQLite-backed reminders and scheduled application launches.
 - In-memory timers and Pomodoro sessions.
-- Local Ollama intent routing, capability listing and explanations, workflows, and optional speech adapters.
-- Desktop notifications where supported by the installed environment.
-- An early desktop window with local service status, recent activity, typed requests, and a system-tray lifecycle. Closing the window keeps A.U.R.A. running; use **Exit A.U.R.A.** to stop it.
+- Local Ollama intent routing, capability listing and explanations, and workflows.
+- Opt-in offline speech recognition and Windows speech output.
+- Opt-in local webcam face-in-frame context, without frame storage.
+- A Windows desktop window, recent activity view, local service status, and system-tray lifecycle. Closing the window keeps A.U.R.A. running; use **Exit A.U.R.A.** to stop it.
 
-Current limitations are documented below and in the relevant implementation. In particular, the console interface is the only complete user interface today. Optional voice support requires separate dependencies and a locally supplied Vosk model. Presence, webcam context, and ESP32 sensor support are not implemented yet.
+The ESP32 and chair load sensors are not connected yet. The current visual signal does not replace those planned sensors.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-  I[Typed input or optional microphone adapter] --> N[Ollama and Qwen intent routing]
+  I[Typed request or opt-in microphone] --> STT[Offline speech recognition]
+  STT --> N[Ollama and Qwen intent routing]
+  I --> N
   N --> V[Intent and argument validation]
   V --> R[Capability registry]
   R --> A[Deterministic action handlers]
   A --> O[Windows applications, local database, and OS adapters]
-  O --> S[Text response, optional TTS, and notifications]
-  C[Future context adapters: webcam and ESP32 sensors] -. planned .-> R
+  O --> S[Text response, Windows TTS, and notifications]
+  C[Opt-in webcam face-in-frame signal] -. local context .-> R
+  E[Future ESP32 chair load sensors] -. planned .-> R
 ```
 
 ## Run the prototype
@@ -49,11 +55,11 @@ Copy-Item .env.example .env
 py -m aura --desktop
 ```
 
-Start Ollama through its normal Windows application or service before launching A.U.R.A. The example configuration uses `qwen3:4b`; change `AURA_OLLAMA_MODEL` in `.env` if you have a different model installed. The default console interface does not require the optional voice dependencies.
+Start Ollama through its normal Windows application or service before launching A.U.R.A. The example configuration uses `qwen3:4b`; change `AURA_OLLAMA_MODEL` in `.env` if you have a different model installed.
 
-The desktop interface is an early development build, not an installer. It starts with its window open; closing the window hides it to the system tray, where **Exit A.U.R.A.** fully stops the app. Listening and presence menu items are shown as unavailable until those integrations are implemented. Use `py -m aura` to run the console interface instead.
+The desktop interface is an early development build, not an installer. It starts with its window open; closing the window hides it to the system tray, where **Exit A.U.R.A.** fully stops the app. The microphone and webcam are off on startup. Use their enable controls in the window or tray menu when you want them active. The first microphone enable downloads the small Vosk model; an internet connection is needed for that initial download. Recognition is offline after setup.
 
-To enable the optional microphone interface, install the `voice` extra and a Vosk model locally, then set `AURA_VOSK_MODEL_PATH` in `.env`. Microphone audio is processed locally by that adapter.
+The `desktop` extra installs the microphone, speech output, webcam, and desktop dependencies. PyAudio is not used. To run the console with speech input, use `py -m aura --voice` after installing the desktop extra. The camera is only available in the desktop interface.
 
 Use `py -m aura --list-actions` to list the registered capabilities. Set `AURA_DEBUG=1` in `.env` to enable diagnostic logging. By default, the SQLite database is stored under `%LOCALAPPDATA%\AURA\aura.sqlite3`.
 
@@ -74,7 +80,7 @@ The app catalog and natural-language routing are not a guarantee that every inst
 
 Reminders and application schedules are stored in SQLite. Their background workers run only while A.U.R.A. is running. Scheduled app launches also require the computer to be awake at the scheduled time; overdue schedules are checked when A.U.R.A. starts again. Timers and Pomodoro sessions are in memory and are lost when the process exits.
 
-The desktop shell currently stays in the system tray when its window is closed. Future milestones include optional Windows startup, first-run dependency setup, editable settings, and a packaged installer. Schedule behavior across sleep, shutdown, and Windows sign-in still needs a durable lifecycle design.
+The desktop shell currently stays in the system tray when its window is closed. Future milestones include ESP32 chair sensor integration, optional Windows startup, first-run dependency setup, editable settings, and a packaged installer. Schedule behavior across sleep, shutdown, and Windows sign-in still needs a durable lifecycle design.
 
 ## Safety model
 
@@ -84,6 +90,7 @@ The desktop shell currently stays in the system tray when its window is closed. 
 - Sensitive system actions require explicit confirmation.
 - File access is restricted to known user folders or explicitly registered roots; no delete action is provided.
 - Reminders and schedules are managed through the local SQLite database.
+- Microphone and camera sensing start off and require an explicit user action to enable.
 
 ## Development
 

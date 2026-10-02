@@ -11,8 +11,11 @@ class IntentRouter:
     def __init__(self, registry: ActionRegistry, ollama: Any, min_confidence: float = .70):
         self.registry, self.ollama, self.min_confidence = registry, ollama, min_confidence
 
-    def route(self, user_text: str) -> dict[str, Any]:
-        raw = self.ollama.generate(user_text, self.registry.describe())
+    def route(self, user_text: str, context: dict | None = None) -> dict[str, Any]:
+        if context:
+            raw = self.ollama.generate(user_text, self.registry.describe(), context=context)
+        else:
+            raw = self.ollama.generate(user_text, self.registry.describe())
         try:
             obj = json.loads(raw)
         except (json.JSONDecodeError, TypeError):

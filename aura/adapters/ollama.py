@@ -16,7 +16,7 @@ class OllamaClient:
         self.model, self.timeout = model, timeout
         self.keep_alive, self.num_ctx, self.num_predict = keep_alive, num_ctx, num_predict
 
-    def generate(self, text: str, capabilities: list[dict]) -> str:
+    def generate(self, text: str, capabilities: list[dict], context: dict | None = None) -> str:
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         compact_capabilities = []
         for item in capabilities:
@@ -45,6 +45,13 @@ class OllamaClient:
             "required": ["intent", "confidence", "arguments"],
             "additionalProperties": False,
         }
+        context_instruction = ""
+        if context:
+            context_instruction = (
+                " Current opt-in, on-device context (a limited sensor signal, not identity): "
+                + json.dumps(context, ensure_ascii=False, separators=(",", ":"))
+                + ". Use it only when relevant to the user's request; do not infer identity or facts beyond these fields."
+            )
         system = ("Return exactly one compact JSON object with keys intent, confidence, arguments. "
                   "Select only an intent from the supplied registered capabilities, or use the reserved intent clarify with arguments {question: string} when the request is ambiguous. "
                   "Never return commands, code, paths to executables, or extra keys. "
@@ -57,7 +64,8 @@ class OllamaClient:
                   "For create_reminder, use the user's reminder text and requested local date/time. Clear requests such as 'set a reminder for breakfast at 8 AM' are valid; if AM/PM or the date is genuinely unclear, ask a short clarification. "
                   "Use confidence 0.9 or higher for clear, direct requests whose arguments are explicit. "
                   "Omit optional arguments that the user did not specify. For reminder and schedule times use this local datetime as the reference: " + now + ". "
-                  "Capability list: " + json.dumps(compact_capabilities, ensure_ascii=False, separators=(",", ":")))
+                  "Capability list: " + json.dumps(compact_capabilities, ensure_ascii=False, separators=(",", ":"))
+                  + context_instruction)
         body = json.dumps({"model": self.model, "stream": False, "format": response_schema,
                            "think": False, "keep_alive": self.keep_alive,
                            "options": {"temperature": 0, "num_ctx": self.num_ctx,
