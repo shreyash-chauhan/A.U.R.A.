@@ -23,7 +23,7 @@ class Handlers:
     def list_functions(self):
         if self.registry is None: return ActionResult(False, "The action list isn't available.")
         items = self.registry.describe()
-        return ActionResult(True, "I displayed the available functions in the console.",
+        return ActionResult(True, "Here are AURA's available functions.",
                             {"display_functions": [f"{item['intent']}: {item['description'].split('; app IDs and aliases:', 1)[0]}" for item in items]})
 
     def explain_function(self, function_id):

@@ -6,7 +6,7 @@ The laptop is A.U.R.A.'s primary device: its microphone and speakers provide voi
 
 ## Project status
 
-This repository currently contains the **Python command-line prototype and deterministic action layer**. It is not yet the finished desktop assistant: the graphical interface, system-tray lifecycle, packaged installer, integrated speech setup, webcam processing, and ESP32/load-sensor integration remain future work.
+This repository currently contains the **Python prototype, deterministic action layer, and an early Windows desktop/system-tray interface**. It is not yet the finished desktop assistant: packaged installation, integrated speech setup, webcam processing, and ESP32/load-sensor integration remain future work.
 
 The current prototype uses Ollama with Qwen for natural-language intent routing. The model selects from registered capabilities and supplies structured arguments; Python validates those arguments and calls predefined handlers. The model is not given unrestricted shell or code execution.
 
@@ -18,6 +18,7 @@ The current prototype uses Ollama with Qwen for natural-language intent routing.
 - In-memory timers and Pomodoro sessions.
 - Local Ollama intent routing, capability listing and explanations, workflows, and optional speech adapters.
 - Desktop notifications where supported by the installed environment.
+- An early desktop window with local service status, recent activity, typed requests, and a system-tray lifecycle. Closing the window keeps A.U.R.A. running; use **Exit A.U.R.A.** to stop it.
 
 Current limitations are documented below and in the relevant implementation. In particular, the console interface is the only complete user interface today. Optional voice support requires separate dependencies and a locally supplied Vosk model. Presence, webcam context, and ESP32 sensor support are not implemented yet.
 
@@ -43,12 +44,14 @@ From the repository folder:
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-py -m pip install -e ".[test]"
+py -m pip install -e ".[desktop]"
 Copy-Item .env.example .env
-py -m aura
+py -m aura --desktop
 ```
 
 Start Ollama through its normal Windows application or service before launching A.U.R.A. The example configuration uses `qwen3:4b`; change `AURA_OLLAMA_MODEL` in `.env` if you have a different model installed. The default console interface does not require the optional voice dependencies.
+
+The desktop interface is an early development build, not an installer. It starts with its window open; closing the window hides it to the system tray, where **Exit A.U.R.A.** fully stops the app. Listening and presence menu items are shown as unavailable until those integrations are implemented. Use `py -m aura` to run the console interface instead.
 
 To enable the optional microphone interface, install the `voice` extra and a Vosk model locally, then set `AURA_VOSK_MODEL_PATH` in `.env`. Microphone audio is processed locally by that adapter.
 
@@ -71,7 +74,7 @@ The app catalog and natural-language routing are not a guarantee that every inst
 
 Reminders and application schedules are stored in SQLite. Their background workers run only while A.U.R.A. is running. Scheduled app launches also require the computer to be awake at the scheduled time; overdue schedules are checked when A.U.R.A. starts again. Timers and Pomodoro sessions are in memory and are lost when the process exits.
 
-A future desktop release is intended to provide a system-tray mode, optional Windows startup, first-run setup, and a status/settings window. Durable background operation and behavior across sleep, shutdown, or app exit will be addressed as that lifecycle is designed.
+The desktop shell currently stays in the system tray when its window is closed. Future milestones include optional Windows startup, first-run dependency setup, editable settings, and a packaged installer. Schedule behavior across sleep, shutdown, and Windows sign-in still needs a durable lifecycle design.
 
 ## Safety model
 

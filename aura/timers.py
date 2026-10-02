@@ -30,3 +30,11 @@ class TimerService:
 
     def list(self):
         with self._lock: return [{"id": k, "due": v[0].isoformat()} for k,v in self._timers.items()]
+
+    def stop(self):
+        """Cancel pending timers during an explicit assistant shutdown."""
+        with self._lock:
+            timers = [timer for _, timer in self._timers.values()]
+            self._timers.clear()
+        for timer in timers:
+            timer.cancel()
