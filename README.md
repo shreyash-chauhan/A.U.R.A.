@@ -59,6 +59,8 @@ Start Ollama through its normal Windows application or service before launching 
 
 The desktop interface is an early development build, not an installer. It starts with its window open; closing the window hides it to the system tray, where **Exit A.U.R.A.** fully stops the app. The microphone and webcam are off on startup. Use their enable controls in the window or tray menu when you want them active. The first microphone enable downloads the small Vosk model; an internet connection is needed for that initial download. Recognition is offline after setup.
 
+To start A.U.R.A. without opening a terminal, double-click `Start AURA.vbs` in the project folder. It launches the desktop interface using the project's virtual environment.
+
 The `desktop` extra installs the microphone, speech output, webcam, and desktop dependencies. PyAudio is not used. To run the console with speech input, use `py -m aura --voice` after installing the desktop extra. The camera is only available in the desktop interface.
 
 Use `py -m aura --list-actions` to list the registered capabilities. Set `AURA_DEBUG=1` in `.env` to enable diagnostic logging. By default, the SQLite database is stored under `%LOCALAPPDATA%\AURA\aura.sqlite3`.
