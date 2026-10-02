@@ -86,7 +86,7 @@ def run_desktop(settings):
     class MainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
-            self.setWindowTitle("A.U.R.A. — Adaptive User Responsive Assistant")
+            self.setWindowTitle("A.U.R.A. — Adaptive User-Centric Responsive Assistant")
             self.resize(760, 650)
             self.pool = QThreadPool.globalInstance()
             self.pool.setMaxThreadCount(3)
@@ -116,7 +116,7 @@ def run_desktop(settings):
             layout = QVBoxLayout(root)
             title = QLabel("A.U.R.A.")
             title.setStyleSheet("font-size: 28px; font-weight: 700;")
-            subtitle = QLabel("Adaptive User Responsive Assistant  ·  Local-first MDP prototype")
+            subtitle = QLabel("Adaptive User-Centric Responsive Assistant  ·  Local-first MDP prototype")
             subtitle.setStyleSheet("color: #64748b; font-size: 13px;")
             layout.addWidget(title)
             layout.addWidget(subtitle)

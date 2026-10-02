@@ -1,6 +1,6 @@
 # A.U.R.A.
 
-**Adaptive User Responsive Assistant (A.U.R.A.)** is a multidisciplinary project to build a local-first Windows assistant that can hear spoken requests, carry out a controlled set of actions, and adapt to the user's context. The laptop provides its microphone, speakers, webcam, and local compute. A later hardware phase will connect an ESP32 to load sensors in a chair to estimate whether the user is seated.
+**Adaptive User-Centric Responsive Assistant (A.U.R.A.)** is a multidisciplinary project to build a local-first Windows assistant that can hear spoken requests, carry out a controlled set of actions, and adapt to the user's context. The laptop provides its microphone, speakers, webcam, and local compute. A later hardware phase will connect an ESP32 to load sensors in a chair to estimate whether the user is seated.
 
 The language model interprets requests and selects from registered functions. It does not receive unrestricted access to the operating system. Deterministic Python handlers validate arguments and perform the actual actions. Voice and webcam sensing are explicitly opt-in: both start off and remain off until enabled in A.U.R.A.'s window or tray menu.
 
