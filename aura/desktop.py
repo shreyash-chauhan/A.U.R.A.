@@ -10,7 +10,7 @@ from aura.apps.catalog import ALIASES
 from aura.app import build
 from aura.core import AssistantCore
 from aura.adapters.camera import WebcamPresence
-from aura.adapters.speech import OfflineMicrophone, WindowsSpeechOutput
+from aura.adapters.speech import PiperSpeechOutput, WhisperMicrophone
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +81,7 @@ def run_desktop(settings):
         reminder = Signal(str)
         voice_text = Signal(str)
         microphone_status = Signal(str)
+        speech_status = Signal(str)
         camera_status = Signal(str)
 
     class MainWindow(QMainWindow):
@@ -97,6 +98,7 @@ def run_desktop(settings):
             self.signals.reminder.connect(self._add_event)
             self.signals.voice_text.connect(lambda text: self._submit_text(text, voice=True))
             self.signals.microphone_status.connect(self._microphone_status)
+            self.signals.speech_status.connect(self._speech_status)
             self.signals.camera_status.connect(self._camera_status)
             self._request_active = False
             self._pending_voice = []
@@ -129,7 +131,7 @@ def run_desktop(settings):
             for name, initial in (
                 ("Assistant", "Starting"),
                 ("Microphone", "Off — enable when ready"),
-                ("Speech output", "Windows speech, ready when needed"),
+                ("Speech output", "Piper neural voice loads on first use"),
                 ("Ollama service", "Checking local service…"),
                 ("Qwen model", "Waiting for Ollama status"),
                 ("Webcam", "Off — enable when ready"),
@@ -151,6 +153,11 @@ def run_desktop(settings):
             self.camera_button.toggled.connect(self._toggle_camera)
             privacy_row.addWidget(self.mic_button)
             privacy_row.addWidget(self.camera_button)
+            self.test_voice_button = QPushButton("Test voice")
+            self.test_voice_button.clicked.connect(
+                lambda: self.speaker.speak("Hello. A.U.R.A. speech is working.")
+            )
+            privacy_row.addWidget(self.test_voice_button)
             privacy_row.addStretch(1)
             layout.addLayout(privacy_row)
 
@@ -217,8 +224,8 @@ def run_desktop(settings):
             self.tray.show()
 
         def _init_runtime(self):
-            self.speaker = WindowsSpeechOutput()
-            self.microphone = OfflineMicrophone(settings.vosk_model_path)
+            self.speaker = PiperSpeechOutput(on_status=self.signals.speech_status.emit)
+            self.microphone = WhisperMicrophone(settings.whisper_model)
             self.webcam = WebcamPresence()
             (self.registry, self.router, _speaker, self.reminders, self.schedules,
              self.timers, self.pomodoros) = build(
@@ -293,7 +300,7 @@ def run_desktop(settings):
             self.mic_button.setText("Disable microphone" if enabled else "Enable microphone")
             self.mic_button.blockSignals(False)
             if enabled:
-                self.status_labels["Microphone"].setText("Starting offline speech recognition…")
+                self.status_labels["Microphone"].setText("Starting local Whisper recognition…")
                 self.microphone.start(self.signals.voice_text.emit, self.signals.microphone_status.emit)
             else:
                 self.microphone.stop()
@@ -305,6 +312,11 @@ def run_desktop(settings):
                 self.mic_button.setChecked(False)
                 self.listening_action.setChecked(False)
                 self._add_event(f"Microphone: {status}")
+
+        def _speech_status(self, status):
+            self.status_labels["Speech output"].setText(status)
+            if status.startswith("Speech unavailable"):
+                self._add_event(status)
 
         def _toggle_camera(self, enabled):
             self.presence_action.blockSignals(True)
@@ -381,8 +393,8 @@ def run_desktop(settings):
             fields.addRow("Model", QLabel(settings.ollama_model))
             fields.addRow("Ollama address", QLabel(settings.ollama_url))
             fields.addRow("Local data", QLabel(str(settings.db_path)))
-            fields.addRow("Voice input", QLabel("Offline Vosk recognition; microphone starts only when enabled"))
-            fields.addRow("Speech output", QLabel("Windows built-in SAPI voices; processed locally"))
+            fields.addRow("Voice input", QLabel(f"faster-whisper {settings.whisper_model} on CPU; microphone starts only when enabled"))
+            fields.addRow("Speech output", QLabel("Piper neural voice, generated and played locally"))
             fields.addRow("Webcam context", QLabel("On-device face-in-frame check; no frames are saved"))
             fields.addRow("ESP32 chair sensors", QLabel("Not connected"))
             layout.addLayout(fields)

@@ -8,7 +8,7 @@ from aura.actions.handlers import Handlers
 from aura.actions.workflow_action import register_workflows
 from aura.adapters.notifications import notify
 from aura.adapters.ollama import OllamaClient
-from aura.adapters.speech import ConsoleSpeaker, OfflineMicrophone, WindowsSpeechOutput
+from aura.adapters.speech import ConsoleSpeaker, PiperSpeechOutput, WhisperMicrophone
 from aura.apps.launcher import AppLauncher
 from aura.config import Settings
 from aura.db import Database
@@ -23,7 +23,7 @@ log = logging.getLogger("aura")
 
 
 def build(settings: Settings, initialize_db: bool = True, speaker=None, notify_user=None):
-    speaker = speaker or (WindowsSpeechOutput() if "--voice" in sys.argv else ConsoleSpeaker())
+    speaker = speaker or (PiperSpeechOutput() if "--voice" in sys.argv else ConsoleSpeaker())
     def alert(text):
         notify(text)
         if notify_user:
@@ -76,7 +76,7 @@ def main():
     schedules.start()
     from aura.apps.catalog import ALIASES
     core = AssistantCore(registry, router, ALIASES)
-    mic = OfflineMicrophone(settings.vosk_model_path) if args.voice else None
+    mic = WhisperMicrophone(settings.whisper_model) if args.voice else None
     speaker.speak("AURA is ready. Type a request, or type quit to exit.")
     try:
         while True:

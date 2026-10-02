@@ -6,9 +6,9 @@ The language model interprets requests and selects from registered functions. It
 
 ## Project status
 
-The repository contains a Python action layer and an early Windows desktop/system-tray application. The desktop build includes offline microphone recognition, Windows speech output, and on-device webcam face-in-frame detection. ESP32/load-sensor integration and a packaged installer remain future work. The desktop interface is an active prototype rather than a finished consumer installer.
+The repository contains a Python action layer and an early Windows desktop/system-tray application. The desktop build includes offline microphone recognition through faster-whisper, neural speech output through Piper, and on-device webcam face-in-frame detection. ESP32/load-sensor integration and a packaged installer remain future work. The desktop interface is an active prototype rather than a finished consumer installer.
 
-Speech recognition uses Vosk's small offline English model; on the first microphone enable, A.U.R.A. downloads the model into its local application-data folder. Audio is processed on the laptop. Text-to-speech uses Windows SAPI through `pyttsx3`. Webcam processing checks frames locally for a face; frames are not saved or sent to a service. When webcam sensing is enabled, the limited face-in-frame signal may accompany a request as context. A face in frame is only a visual signal, not identity or proof that the user is seated.
+Speech recognition uses faster-whisper's `small.en` model on the CPU with int8 inference. On first microphone use, the model (roughly 460 MB) is downloaded into `%LOCALAPPDATA%\AURA\models`; audio is then transcribed locally. Pause-based capture and VAD help segment utterances. Piper generates speech locally using the `en_US-lessac-medium` neural voice, downloaded on first spoken response (roughly 64 MB) into `%LOCALAPPDATA%\AURA\voices`. Use **Test voice** in the window to check playback. Webcam processing checks frames locally for a face; frames are not saved or sent to a service. When webcam sensing is enabled, the limited face-in-frame signal may accompany a request as context. A face in frame is only a visual signal, not identity or proof that the user is seated.
 
 Natural-language intent routing uses Ollama with a local Qwen model. The model emits a structured intent and arguments, which are validated before a registered Python handler runs. It cannot return executable commands.
 
@@ -19,7 +19,7 @@ Natural-language intent routing uses Ollama with a local Qwen model. The model e
 - SQLite-backed reminders and scheduled application launches.
 - In-memory timers and Pomodoro sessions.
 - Local Ollama intent routing, capability listing and explanations, and workflows.
-- Opt-in offline speech recognition and Windows speech output.
+- Opt-in faster-whisper speech recognition and Piper neural speech output.
 - Opt-in local webcam face-in-frame context, without frame storage.
 - A Windows desktop window, recent activity view, local service status, and system-tray lifecycle. Closing the window keeps A.U.R.A. running; use **Exit A.U.R.A.** to stop it.
 
@@ -36,7 +36,7 @@ flowchart TD
   V --> R[Capability registry]
   R --> A[Deterministic action handlers]
   A --> O[Windows applications, local database, and OS adapters]
-  O --> S[Text response, Windows TTS, and notifications]
+  O --> S[Text response, Piper TTS, and notifications]
   C[Opt-in webcam face-in-frame signal] -. local context .-> R
   E[Future ESP32 chair load sensors] -. planned .-> R
 ```
@@ -57,11 +57,11 @@ py -m aura --desktop
 
 Start Ollama through its normal Windows application or service before launching A.U.R.A. The example configuration uses `qwen3:4b`; change `AURA_OLLAMA_MODEL` in `.env` if you have a different model installed.
 
-The desktop interface is an early development build, not an installer. It starts with its window open; closing the window hides it to the system tray, where **Exit A.U.R.A.** fully stops the app. The microphone and webcam are off on startup. Use their enable controls in the window or tray menu when you want them active. The first microphone enable downloads the small Vosk model; an internet connection is needed for that initial download. Recognition is offline after setup.
+The desktop interface is an early development build, not an installer. It starts with its window open; closing the window hides it to the system tray, where **Exit A.U.R.A.** fully stops the app. The microphone and webcam are off on startup. Use their enable controls in the window or tray menu when you want them active. First use downloads the faster-whisper `small.en` model and Piper voice; an internet connection is needed for initial setup. Recognition and speech generation are local after setup. Use **Test voice** to check the speaker and voice model.
 
 To start A.U.R.A. without opening a terminal, double-click `Start AURA.vbs` in the project folder. It launches the desktop interface using the project's virtual environment.
 
-The `desktop` extra installs the microphone, speech output, webcam, and desktop dependencies. PyAudio is not used. To run the console with speech input, use `py -m aura --voice` after installing the desktop extra. The camera is only available in the desktop interface.
+The `desktop` extra installs faster-whisper, Piper, microphone playback/capture, webcam, and desktop dependencies. PyAudio is not used. To run the console with speech input and output, use `py -m aura --voice` after installing the desktop extra. The camera is only available in the desktop interface. Set `AURA_WHISPER_MODEL` in `.env` to select another faster-whisper model; the default `small.en` balances recognition quality and local speed for English.
 
 Use `py -m aura --list-actions` to list the registered capabilities. Set `AURA_DEBUG=1` in `.env` to enable diagnostic logging. By default, the SQLite database is stored under `%LOCALAPPDATA%\AURA\aura.sqlite3`.
 

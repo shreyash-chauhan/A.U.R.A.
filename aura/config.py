@@ -38,6 +38,5 @@ class Settings:
         return base / "AURA" / "aura.sqlite3"
 
     @property
-    def vosk_model_path(self) -> Path | None:
-        configured = os.getenv("AURA_VOSK_MODEL_PATH", "").strip()
-        return Path(configured).expanduser() if configured else None
+    def whisper_model(self) -> str:
+        return os.getenv("AURA_WHISPER_MODEL", "small.en").strip() or "small.en"
