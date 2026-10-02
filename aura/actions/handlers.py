@@ -69,21 +69,37 @@ class Handlers:
         if sys.platform != "win32": return ActionResult(False, "Media keys are available on Windows.")
         try:
             import ctypes
+            from ctypes import wintypes
             KEYEVENTF_KEYUP, INPUT_KEYBOARD, VK = 0x0002, 1, {"play":0xB3,"next":0xB0,"previous":0xB1}
+            class MOUSEINPUT(ctypes.Structure):
+                _fields_ = [("dx",wintypes.LONG),("dy",wintypes.LONG),("mouseData",wintypes.DWORD),
+                            ("dwFlags",wintypes.DWORD),("time",wintypes.DWORD),("dwExtraInfo",ctypes.c_size_t)]
             class KEYBDINPUT(ctypes.Structure):
-                _fields_ = [("wVk",ctypes.c_ushort),("wScan",ctypes.c_ushort),("dwFlags",ctypes.c_ulong),("time",ctypes.c_ulong),("dwExtraInfo",ctypes.POINTER(ctypes.c_ulong))]
-            class INPUT_UNION(ctypes.Union): _fields_ = [("ki",KEYBDINPUT)]
-            class INPUT(ctypes.Structure): _fields_ = [("type",ctypes.c_ulong),("union",INPUT_UNION)]
-            for flags in (0,KEYEVENTF_KEYUP):
-                item = INPUT(INPUT_KEYBOARD, INPUT_UNION(ki=KEYBDINPUT(VK[key],0,flags,0,None)))
-                ctypes.windll.user32.SendInput(1,ctypes.byref(item),ctypes.sizeof(item))
+                _fields_ = [("wVk",wintypes.WORD),("wScan",wintypes.WORD),("dwFlags",wintypes.DWORD),
+                            ("time",wintypes.DWORD),("dwExtraInfo",ctypes.c_size_t)]
+            class HARDWAREINPUT(ctypes.Structure):
+                _fields_ = [("uMsg",wintypes.DWORD),("wParamL",wintypes.WORD),("wParamH",wintypes.WORD)]
+            class INPUT_UNION(ctypes.Union):
+                _fields_ = [("mi",MOUSEINPUT),("ki",KEYBDINPUT),("hi",HARDWAREINPUT)]
+            class INPUT(ctypes.Structure):
+                _fields_ = [("type",wintypes.DWORD),("union",INPUT_UNION)]
+            user32 = ctypes.windll.user32
+            user32.SendInput.argtypes = (wintypes.UINT,ctypes.POINTER(INPUT),ctypes.c_int)
+            user32.SendInput.restype = wintypes.UINT
+            events = (INPUT * 2)()
+            for item, flags in zip(events, (0,KEYEVENTF_KEYUP)):
+                item.type = INPUT_KEYBOARD
+                item.ki = KEYBDINPUT(VK[key],0,flags,0,0)
+            sent = user32.SendInput(2,events,ctypes.sizeof(INPUT))
+            if sent != 2:
+                return ActionResult(False, "Windows rejected the media key. Spotify may be running with higher permissions.")
             return ActionResult(True, {"play":"Toggling playback.","next":"Skipping to the next track.","previous":"Going to the previous track."}[key])
         except Exception: return ActionResult(False, "I couldn't send the media control.")
 
     def toggle_spotify(self):
         result = self.media_key("play")
         if result.success:
-            return ActionResult(True, "Sent Spotify the play or pause media key. If another media app is active, Windows may send it there instead.")
+            return ActionResult(True, "Sent the Windows play/pause media key. It controls the active media session, which should be Spotify when Spotify is the active player.")
         return result
 
     def open_url(self, url):
@@ -101,7 +117,7 @@ class Handlers:
 
     def create_reminder(self, text, datetime, recurrence=None):
         try: rid = self.reminders.create(text, datetime, recurrence)
-        except (ValueError, TypeError): return ActionResult(False, "I couldn't set that reminder. Please check the time.")
+        except (ValueError, TypeError): return ActionResult(False, "I couldn't set that reminder. Check that you gave me a future time.")
         return ActionResult(True, "Reminder set.", {"reminder_id": rid})
 
     def list_reminders(self):
@@ -116,7 +132,7 @@ class Handlers:
 
     def edit_reminder(self, reminder_id, text=None, datetime=None):
         try: ok = self.reminders.edit(reminder_id, text, datetime)
-        except (ValueError, TypeError): return ActionResult(False, "I couldn't update that reminder.")
+        except (ValueError, TypeError): return ActionResult(False, "I couldn't update that reminder. Check that the new time is in the future.")
         return ActionResult(ok, "Reminder updated." if ok else "I couldn't find that reminder.")
 
     def snooze_reminder(self, reminder_id, minutes):
@@ -155,7 +171,12 @@ class Handlers:
         try: schedule_id = self.schedules.create(app_id, datetime, recurrence, allow_due=delay_seconds is not None)
         except (ValueError, TypeError): return ActionResult(False, "I couldn't schedule that app launch. Check the app and time.")
         spec = resolve_app(app_id)
-        return ActionResult(True, f"I'll open {spec.display_name} at the scheduled time ({recurrence}).",
+        if delay_seconds is not None:
+            unit = "second" if delay_seconds == 1 else "seconds"
+            message = f"I'll open {spec.display_name} in {delay_seconds} {unit}."
+        else:
+            message = f"I'll open {spec.display_name} at the scheduled time ({recurrence})."
+        return ActionResult(True, message,
                             {"schedule_id":schedule_id})
 
     def list_app_schedules(self):

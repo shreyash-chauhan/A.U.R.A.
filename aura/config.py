@@ -25,7 +25,7 @@ class Settings:
     ollama_model: str = os.getenv("AURA_OLLAMA_MODEL", "qwen3:8b")
     ollama_keep_alive: str = os.getenv("AURA_OLLAMA_KEEP_ALIVE", "15m")
     ollama_num_ctx: int = int(os.getenv("AURA_OLLAMA_NUM_CTX", "4096"))
-    ollama_num_predict: int = int(os.getenv("AURA_OLLAMA_NUM_PREDICT", "128"))
+    ollama_num_predict: int = int(os.getenv("AURA_OLLAMA_NUM_PREDICT", "256"))
     min_confidence: float = float(os.getenv("AURA_MIN_CONFIDENCE", "0.70"))
     debug: bool = os.getenv("AURA_DEBUG", "0").lower() in {"1", "true", "yes"}
 

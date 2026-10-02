@@ -21,12 +21,13 @@ def register_builtins(registry, handlers):
     for shortcut in ("google","youtube","github","chatgpt","google_drive"):
         registry.register(ActionSpec("open_"+shortcut,"Open " + shortcut.replace("_"," "),OBJ({}),lambda s=shortcut: handlers.open_shortcut(s)))
     registry.register(ActionSpec("create_reminder","Set a persistent reminder. Convert relative times to a future ISO-8601 local datetime. Recurrence is optional JSON text such as daily or weekly.",OBJ({"text":S("string",maxLength=500),"datetime":S("string",maxLength=64),"recurrence":S("string",maxLength=200,nullable=True)},["text","datetime"]),handlers.create_reminder,
-        examples=("Remind me to submit my assignment at 8 PM.","Remind me tomorrow at 9 AM to attend class.","Remind me every Monday at 8 AM to check my timetable.")))
+        examples=("Set a reminder for breakfast at 8 AM.","Remind me to have breakfast at 8 AM.","Remind me tomorrow at 9 AM to attend class.","Remind me every Monday at 8 AM to check my timetable.")))
     registry.register(ActionSpec("list_reminders","List pending reminders",OBJ({}),handlers.list_reminders,examples=("List my reminders.",)))
     registry.register(ActionSpec("delete_reminder","Delete a pending reminder",OBJ({"reminder_id":S("integer",minimum=1)},["reminder_id"]),handlers.delete_reminder))
     registry.register(ActionSpec("edit_reminder","Edit a pending reminder",OBJ({"reminder_id":S("integer",minimum=1),"text":S("string",maxLength=500,nullable=True),"datetime":S("string",maxLength=64,nullable=True)},["reminder_id"]),handlers.edit_reminder))
     registry.register(ActionSpec("snooze_reminder","Snooze a pending reminder",OBJ({"reminder_id":S("integer",minimum=1),"minutes":S("integer",minimum=1,maximum=10080)},["reminder_id","minutes"]),handlers.snooze_reminder))
-    registry.register(ActionSpec("set_timer","Set a timer",OBJ({"seconds":S("integer",minimum=1,maximum=604800)},["seconds"]),handlers.set_timer))
+    registry.register(ActionSpec("set_timer","Set a timer from an explicit duration, converted to seconds; clarify if the user omitted its unit",OBJ({"seconds":S("integer",minimum=1,maximum=604800)},["seconds"]),handlers.set_timer,
+        examples=("Set a timer for 5 minutes.","Set a timer for 30 seconds.")))
     registry.register(ActionSpec("start_pomodoro","Start a focus Pomodoro with optional work minutes, break minutes, and cycle count",OBJ({
         "work_minutes":S("integer",minimum=1,maximum=180,nullable=True),"break_minutes":S("integer",minimum=1,maximum=60,nullable=True),"cycles":S("integer",minimum=1,maximum=12,nullable=True)}),handlers.start_pomodoro,
         examples=("Start a Pomodoro.","Start a 50 minute focus session with a 10 minute break.")))

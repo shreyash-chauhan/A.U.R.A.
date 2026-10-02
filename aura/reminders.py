@@ -14,13 +14,15 @@ class ReminderService:
         self._thread: threading.Thread | None = None
 
     def create(self, text: str, datetime_value: str, recurrence: str | None = None) -> int:
-        scheduled = datetime.fromisoformat(datetime_value)
+        scheduled = datetime.fromisoformat(datetime_value).astimezone()
         if not text.strip() or len(text) > 500:
             raise ValueError("Invalid reminder text")
+        if scheduled <= datetime.now().astimezone():
+            raise ValueError("Reminder time must be in the future")
         rule = self._parse_recurrence(recurrence)
         with self.db.connect() as conn:
             cur = conn.execute("INSERT INTO reminders(text,created_at,scheduled_at,recurrence) VALUES(?,?,?,?)",
-                (text.strip(), datetime.now().astimezone().isoformat(), scheduled.astimezone().isoformat(),
+                (text.strip(), datetime.now().astimezone().isoformat(), scheduled.isoformat(),
                  json.dumps(rule) if rule else None))
             return int(cur.lastrowid)
 
@@ -56,7 +58,10 @@ class ReminderService:
             raise ValueError("Invalid reminder text")
         sets, vals = [], []
         if text is not None: sets.append("text=?"); vals.append(text.strip())
-        if datetime_value is not None: sets.append("scheduled_at=?"); vals.append(datetime.fromisoformat(datetime_value).astimezone().isoformat())
+        if datetime_value is not None:
+            scheduled = datetime.fromisoformat(datetime_value).astimezone()
+            if scheduled <= datetime.now().astimezone(): raise ValueError("Reminder time must be in the future")
+            sets.append("scheduled_at=?"); vals.append(scheduled.isoformat())
         if not sets: return False
         vals.append(reminder_id)
         with self.db.connect() as conn:

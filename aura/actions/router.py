@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Any
 from aura.actions.registry import ActionRegistry, validate_arguments
 
@@ -40,6 +41,9 @@ class IntentRouter:
         if not valid:
             log.debug("Router rejected arguments for %s: %s", intent, error)
             return {"kind": "fallback", "message": "I couldn't understand that. Please try again."}
+        if intent == "set_timer" and not re.search(
+                r"\b(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)\b", user_text.casefold()):
+            return {"kind": "clarify", "message": "What duration and unit should I use? For example, 5 minutes or 30 seconds."}
         if confidence < self.min_confidence:
             log.debug("Router confidence %.2f below threshold %.2f", confidence, self.min_confidence)
             return {"kind": "clarify", "message": "I'm not sure what you mean. Could you say that another way?"}

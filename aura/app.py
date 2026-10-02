@@ -134,6 +134,9 @@ def main():
             if text.casefold() in {"quit", "exit", "stop aura"}:
                 break
             log.debug("Input received (%d characters)", len(text))
+            # Timestamp every request before either direct handling or inference.
+            # Reusing the previous model request's timestamp made short schedules overdue.
+            registry.request_started_at = datetime.now().astimezone()
             if pending_confirmation:
                 action, arguments = pending_confirmation
                 pending_confirmation = None
@@ -155,7 +158,6 @@ def main():
                 continue
             try:
                 route_started = time.perf_counter()
-                registry.request_started_at = datetime.now().astimezone()
                 decision = router.route(text)
                 log.debug("Intent route completed in %.2fs", time.perf_counter()-route_started)
             except Exception:
